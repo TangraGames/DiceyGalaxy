@@ -7,15 +7,27 @@
 #define MIN(a, b) ((a)<(b)? (a) : (b))
 #define MAP_RADIUS 5
 
+// Tileset configuration for terrain.png
+#define TILE_WIDTH 120
+#define TILE_HEIGHT 140
+#define TILE_PADDING 1
+#define TILESET_COLUMNS 7
+#define TILESET_ROWS 14
+#define SCALE_FACTOR 2 // Scale image to 1/5th size
+
+// Scaled tile dimensions
+#define SCALED_TILE_WIDTH (TILE_WIDTH / SCALE_FACTOR)
+#define SCALED_TILE_HEIGHT (TILE_HEIGHT / SCALE_FACTOR)
+
 //------------------------------------------------------------------------------------
 // Global Variables
 //------------------------------------------------------------------------------------
-static int gameScreenWidth = 640;
-static int gameScreenHeight = 480;
+static int gameScreenWidth = 800;
+static int gameScreenHeight = 800;
 
 static Layout hexLayout;
-static Hex selectedHex;
 static Map map;
+static Texture2D tilesetTexture;
 
 //------------------------------------------------------------------------------------
 // Module Functions
@@ -38,28 +50,90 @@ static Vector2 getVirtualMouse(void)
     return virtualMouse;
 }
 
+
+// Get the source rectangle from tileset for a given tile type
+// Tileset has tiles in 7 columns × 14 rows, each 120×140 pixels with 1px padding
+// After scaling to 1/5th, tiles are 24×28 pixels with padding scaled down
+// Tile types map to grid positions: GRASS=0, WATER=1, ROCKS=2, SAND=3, FOREST=4
+static Rectangle getTileSourceRect(TileType type)
+{
+    // Calculate row and column from tile type (reading left-to-right, top-to-bottom)
+    int col = type % TILESET_COLUMNS;
+    int row = type / TILESET_COLUMNS;
+    
+    // Account for scaled padding between tiles
+    float scaledPadding = (float)TILE_PADDING / SCALE_FACTOR;
+    float x = col * (SCALED_TILE_WIDTH + scaledPadding);
+    float y = row * (SCALED_TILE_HEIGHT + scaledPadding);
+    
+    return (Rectangle){ x, y, (float)SCALED_TILE_WIDTH, (float)SCALED_TILE_HEIGHT };
+}
+
 static void initGame(void)
 {
-    // Initialize hex layout with pointy-top orientation, 24 pixel size, centered
-    Point size = { 24.0f, 24.0f };
+    // Load tileset texture from terrain.png (7 columns × 14 rows, 120×140px tiles, 1px padding)
+    Image tilesetImage = LoadImage("resources/terrain.png");
+    if (!IsImageValid(tilesetImage))
+    {
+        TraceLog(LOG_ERROR, "Failed to load tileset image: resources/terrain.png");
+    }
+    else
+    {
+        // Scale image to 1/10th size
+        ImageResize(&tilesetImage, tilesetImage.width / SCALE_FACTOR, tilesetImage.height / SCALE_FACTOR);
+        tilesetTexture = LoadTextureFromImage(tilesetImage);
+        UnloadImage(tilesetImage);
+    }
+    
+    // Initialize hex layout with pointy-top orientation
+    // For pointy-top hexagons, we need to calculate proper spacing:
+    // - Horizontal spacing between centers = √3 * size.x (should equal tile width)
+    // - Vertical spacing between centers = 1.5 * size.y
+    // To decrease vertical spacing (more overlap), increase the divisor
+    Point size = { 
+        (float)SCALED_TILE_WIDTH / SQRT3,   // √3 ≈ 1.732
+        (float)SCALED_TILE_HEIGHT / 2.0f    // Increased divisor from 1.5 to 2 to decrease vertical spacing between tiles
+    };
     Point origin = { gameScreenWidth / 2.0f, gameScreenHeight / 2.0f };
     hexLayout = MakeLayout(layout_pointy, size, origin);
     
-    // Initialize selected hex to an out-of-bounds value
-    selectedHex = MakeHex(100, -100, 0);
-    
     // Create map using the utility function
     map = CreateMap(origin, size, MAP_RADIUS);
+    
+    // Set center tile to a different type for testing
+    Hex centerHex = MakeHex(0, 0, 0);
+    SetTileType(&map, centerHex, TILE_WATER);
+    
+    // Add some variety to the map
+    SetTileType(&map, MakeHex(1, -1, 0), TILE_ROCKS);
+    SetTileType(&map, MakeHex(-1, 1, 0), TILE_SAND);
+    SetTileType(&map, MakeHex(0, 1, -1), TILE_FOREST);
 }
 
 static void updateGame(void)
 {
-    // Handle mouse click to select hex
+    // Handle mouse click to select tile
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
     {
         Vector2 virtualMouse = getVirtualMouse();
         Point mousePoint = { virtualMouse.x, virtualMouse.y };
-        selectedHex = PixelToHex(hexLayout, mousePoint);
+        Hex clickedHex = PixelToHex(hexLayout, mousePoint);
+        SetTileSelected(&map, clickedHex, true);
+    }
+    
+    // Handle right click to change tile type (for testing)
+    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT))
+    {
+        Vector2 virtualMouse = getVirtualMouse();
+        Point mousePoint = { virtualMouse.x, virtualMouse.y };
+        Hex clickedHex = PixelToHex(hexLayout, mousePoint);
+        
+        Tile* tile = GetTileAt(&map, clickedHex);
+        if (tile != NULL) {
+            // Cycle through tile types
+            tile->type = (tile->type + 1) % 5;
+            tile->isWalkable = (tile->type != TILE_WATER && tile->type != TILE_ROCKS);
+        }
     }
 }
 
@@ -67,37 +141,71 @@ static void drawGame(void)
 {
     ClearBackground(RAYWHITE);
     
-    // Draw all hexes from the map
-    for (int i = 0; i < map.hexCount; i++)
+    if (!IsTextureValid(tilesetTexture))
     {
-        Hex hex = map.hexes[i];
-        
-        // Get hex center for DrawPoly
-        Point center = HexToPixel(hexLayout, hex);
-        
-        // Determine fill color based on hex state
-        Color fillColor = LIGHTGRAY;
-        if (HexEquals(hex, selectedHex))
-        {
-            fillColor = YELLOW;  // Selected hex
-        }
-        if (hex.q == 0 && hex.r == 0 && hex.s == 0)
-        {
-            fillColor = SKYBLUE;  // Center hex (override selected)
-        }
-        
-        // Draw filled hexagon using DrawPoly
-        DrawPoly((Vector2){center.x, center.y}, 6, hexLayout.size.x, 30.0f, fillColor);
-        
-        // Draw hex outline
-        DrawPolyLines((Vector2){center.x, center.y}, 6, hexLayout.size.x, 30.0f, DARKGRAY);
+        DrawText("ERROR: Tileset not loaded!", 10, 10, 20, RED);
+        return;
     }
     
-    DrawText(TextFormat("Hexagonal Map - Click to select | Selected: (%d,%d,%d) | Hexes: %d", 
-             selectedHex.q, selectedHex.r, selectedHex.s, map.hexCount), 10, 10, 20, BLACK);
+    // Track selected tile for info display
+    Tile* selectedTile = NULL;
+    Point selectedCenter = {0, 0};
+    
+    // Draw all tiles from the map
+    for (int i = 0; i < map.tileCount; i++)
+    {
+        Tile tile = map.tiles[i];
+        
+        // Get hex center
+        Point center = HexToPixel(hexLayout, tile.position);
+        
+        // Track selected tile
+        if (tile.isSelected)
+        {
+            selectedTile = &map.tiles[i];
+            selectedCenter = center;
+        }
+        
+        // Get source rectangle from tileset
+        Rectangle sourceRect = getTileSourceRect(tile.type);
+        
+        // Calculate destination rectangle (centered on hex position)
+        // Use scaled tile dimensions
+        Rectangle destRect = {
+            center.x - (float)SCALED_TILE_WIDTH / 2.0f,
+            center.y - (float)SCALED_TILE_HEIGHT / 2.0f,
+            (float)SCALED_TILE_WIDTH,
+            (float)SCALED_TILE_HEIGHT
+        };
+        
+        // Tint color (highlight if selected)
+        Color tint = WHITE;
+        if (tile.isSelected)
+        {
+            tint = YELLOW;  // Tint selected tiles yellow
+        }
+        
+        // Draw the tile texture
+        DrawTexturePro(tilesetTexture, sourceRect, destRect, (Vector2){0, 0}, 0.0f, tint);
+    }
+    
+    // Top info
+    DrawText(TextFormat("Map Tiles: %d | Left-click: select | Right-click: change terrain", 
+             map.tileCount), 10, 10, 20, BLACK);
+    
+    // Bottom info - show selected tile coordinates
+    if (selectedTile != NULL)
+    {
+        DrawText(TextFormat("Selected Tile - Cube: (q:%d, r:%d, s:%d) | Screen: (%.1f, %.1f)", 
+                 selectedTile->position.q, selectedTile->position.r, selectedTile->position.s,
+                 selectedCenter.x, selectedCenter.y), 
+                 10, gameScreenHeight - 30, 20, DARKGREEN);
+    }
+    else
+    {
+        DrawText("No tile selected", 10, gameScreenHeight - 30, 20, GRAY);
+    }
 }
-
-//------------------------------------------------------------------------------------
 // Program main entry point
 //------------------------------------------------------------------------------------
 int main(void)
@@ -143,6 +251,7 @@ int main(void)
 
     // De-Initialization
     //--------------------------------------------------------------------------------------
+    UnloadTexture(tilesetTexture);      // Unload tileset texture
     DestroyMap(&map);                   // Free map memory
     UnloadRenderTexture(target);        // Unload render texture
 

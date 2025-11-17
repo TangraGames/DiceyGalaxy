@@ -15,13 +15,20 @@
     - HexLength: Computes the length of a hex from the origin.
     - HexEquals: Checks if two hexes are equal.
     - HexDirection: Returns the direction vector for a given direction index.
-    - CreateMap: Creates a map with hexes in a given radius around center.
+    - CreateMap: Creates a map with tiles in a given radius around center.
     - DestroyMap: Frees the memory allocated for the map.
+    - GetTileAt: Retrieves a tile at a specific hex position.
+    - SetTileType: Changes the terrain type of a tile.
+    - SetTileSelected: Sets the selection state of a tile.
+    - GetTileColor: Returns the color associated with a tile type.
 
     Data Structures and definitions provided in this file:
     ------------------------------------------------------------------------
-    - Definitions for Point and Hex structures.
-    - Map: Structure to hold a hexagonal map with center, size, and hex array.
+    - Point: 2D coordinate structure (x, y).
+    - Hex: Cube coordinate structure (q, r, s).
+    - TileType: Enumeration of terrain types (GRASS, WATER, ROCKS, etc.).
+    - Tile: Game tile with position, type, and properties.
+    - Map: Structure to hold a hexagonal map with center, size, and tile array.
     - Direction vectors for hex neighbors.
     - Layout: Structure to define hex layout (orientation, size, origin).
     - Orientation: Structure to define hex orientation (flat-topped or pointy-topped).
@@ -50,12 +57,27 @@ typedef struct FractionalHex {
     float s;
 } FractionalHex;
 
+typedef enum TileType {
+    TILE_GRASS = 0,
+    TILE_WATER,
+    TILE_ROCKS,
+    TILE_SAND,
+    TILE_FOREST
+} TileType;
+
+typedef struct Tile {
+    Hex position;       // Hex coordinate (q, r, s)
+    TileType type;      // Terrain type
+    bool isWalkable;    // Can units move through?
+    bool isSelected;    // Is this tile currently selected?
+} Tile;
+
 typedef struct Map {
     Point center;       // Center position (origin) of hex (0,0,0)
     Point hexSize;      // Size of each hex
     int radius;         // Map radius (tiles from center)
-    Hex* hexes;         // Dynamic array of all hexes
-    int hexCount;       // Actual number of hexes in the map
+    Tile* tiles;        // Dynamic array of tiles
+    int tileCount;      // Number of tiles in the map
 } Map;
 
 FractionalHex MakeFractionalHex(float q, float r, float s) {
@@ -236,18 +258,23 @@ Map CreateMap(Point center, Point hexSize, int radius) {
     map.hexSize = hexSize;
     map.radius = radius;
     
-    // Calculate maximum number of hexes (3 * radius^2 + 3 * radius + 1)
-    int maxHexes = 3 * radius * radius + 3 * radius + 1;
-    map.hexes = (Hex*)malloc(maxHexes * sizeof(Hex));
-    map.hexCount = 0;
+    // Calculate maximum number of tiles (3 * radius^2 + 3 * radius + 1)
+    int maxTiles = 3 * radius * radius + 3 * radius + 1;
+    map.tiles = (Tile*)malloc(maxTiles * sizeof(Tile));
+    map.tileCount = 0;
     
-    // Populate map with hexes
+    // Populate map with tiles
     for (int q = -radius; q <= radius; q++) {
         for (int r = -radius; r <= radius; r++) {
             int s = -q - r;
             if (abs(s) <= radius) {
-                map.hexes[map.hexCount] = MakeHex(q, r, s);
-                map.hexCount++;
+                Tile tile;
+                tile.position = MakeHex(q, r, s);
+                tile.type = TILE_GRASS;  // Default terrain type
+                tile.isWalkable = true;  // Grass is walkable by default
+                tile.isSelected = false;
+                map.tiles[map.tileCount] = tile;
+                map.tileCount++;
             }
         }
     }
@@ -256,9 +283,55 @@ Map CreateMap(Point center, Point hexSize, int radius) {
 }
 
 void DestroyMap(Map* map) {
-    if (map->hexes != NULL) {
-        free(map->hexes);
-        map->hexes = NULL;
-        map->hexCount = 0;
+    if (map->tiles != NULL) {
+        free(map->tiles);
+        map->tiles = NULL;
+        map->tileCount = 0;
+    }
+}
+
+// Tile helper functions
+
+Tile* GetTileAt(Map* map, Hex position) {
+    for (int i = 0; i < map->tileCount; i++) {
+        if (HexEquals(map->tiles[i].position, position)) {
+            return &map->tiles[i];
+        }
+    }
+    return NULL;  // Tile not found
+}
+
+void SetTileType(Map* map, Hex position, TileType type) {
+    Tile* tile = GetTileAt(map, position);
+    if (tile != NULL) {
+        tile->type = type;
+        // Update walkability based on type
+        tile->isWalkable = (type != TILE_WATER && type != TILE_ROCKS);
+    }
+}
+
+void SetTileSelected(Map* map, Hex position, bool selected) {
+    // First deselect all tiles if selecting a new one
+    if (selected) {
+        for (int i = 0; i < map->tileCount; i++) {
+            map->tiles[i].isSelected = false;
+        }
+    }
+    
+    // Set the target tile's selection state
+    Tile* tile = GetTileAt(map, position);
+    if (tile != NULL) {
+        tile->isSelected = selected;
+    }
+}
+
+Color GetTileColor(TileType type) {
+    switch(type) {
+        case TILE_GRASS:  return (Color){34, 139, 34, 255};   // Forest green
+        case TILE_WATER:  return (Color){30, 144, 255, 255};  // Dodger blue
+        case TILE_ROCKS:  return (Color){128, 128, 128, 255}; // Gray
+        case TILE_SAND:   return (Color){244, 164, 96, 255};  // Sandy brown
+        case TILE_FOREST: return (Color){0, 100, 0, 255};     // Dark green
+        default:          return LIGHTGRAY;
     }
 }
