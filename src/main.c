@@ -1,4 +1,8 @@
-
+/*
+    Credits: 
+    Raylib letterbox example: https://www.raylib.com/examples/core/loader.html?name=core_window_letterbox
+    RedBlob Games hex grid guide: (https://www.redblobgames.com/grids/hexagons/)
+*/
 #include "raylib.h"
 #include "raymath.h"        // Required for: Vector2Clamp()
 #include "utils_hexmap.c"

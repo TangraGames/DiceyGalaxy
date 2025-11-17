@@ -1,5 +1,5 @@
 # DiceyGalaxy
-A 4X game of skill and luck on a galactic scale!
+A 4X game of skill and luck on a galactic scale! Work in progress...
 
 ## Project Structure
 
