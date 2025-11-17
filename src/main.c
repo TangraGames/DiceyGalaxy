@@ -5,6 +5,7 @@
 
 #define MAX(a, b) ((a)>(b)? (a) : (b))
 #define MIN(a, b) ((a)<(b)? (a) : (b))
+#define MAP_RADIUS 5
 
 //------------------------------------------------------------------------------------
 // Global Variables
@@ -14,6 +15,7 @@ static int gameScreenHeight = 480;
 
 static Layout hexLayout;
 static Hex selectedHex;
+static Map map;
 
 //------------------------------------------------------------------------------------
 // Module Functions
@@ -45,6 +47,9 @@ static void initGame(void)
     
     // Initialize selected hex to an out-of-bounds value
     selectedHex = MakeHex(100, -100, 0);
+    
+    // Create map using the utility function
+    map = CreateMap(origin, size, MAP_RADIUS);
 }
 
 static void updateGame(void)
@@ -62,41 +67,34 @@ static void drawGame(void)
 {
     ClearBackground(RAYWHITE);
     
-    // Draw hexagonal map with 5 tiles in each direction from center
-    for (int q = -5; q <= 5; q++)
+    // Draw all hexes from the map
+    for (int i = 0; i < map.hexCount; i++)
     {
-        for (int r = -5; r <= 5; r++)
+        Hex hex = map.hexes[i];
+        
+        // Get hex center for DrawPoly
+        Point center = HexToPixel(hexLayout, hex);
+        
+        // Determine fill color based on hex state
+        Color fillColor = LIGHTGRAY;
+        if (HexEquals(hex, selectedHex))
         {
-            int s = -q - r;
-            if (abs(s) <= 5)  // Ensure we stay within 5 tiles in all directions
-            {
-                Hex hex = MakeHex(q, r, s);
-                
-                // Get hex center for DrawPoly
-                Point center = HexToPixel(hexLayout, hex);
-                
-                // Determine fill color based on hex state
-                Color fillColor = LIGHTGRAY;
-                if (HexEquals(hex, selectedHex))
-                {
-                    fillColor = YELLOW;  // Selected hex
-                }
-                if (q == 0 && r == 0 && s == 0)
-                {
-                    fillColor = SKYBLUE;  // Center hex (override selected)
-                }
-                
-                // Draw filled hexagon using DrawPoly
-                DrawPoly((Vector2){center.x, center.y}, 6, hexLayout.size.x, 30.0f, fillColor);
-                
-                // Draw hex outline
-                DrawPolyLines((Vector2){center.x, center.y}, 6, hexLayout.size.x, 30.0f, DARKGRAY);
-            }
+            fillColor = YELLOW;  // Selected hex
         }
+        if (hex.q == 0 && hex.r == 0 && hex.s == 0)
+        {
+            fillColor = SKYBLUE;  // Center hex (override selected)
+        }
+        
+        // Draw filled hexagon using DrawPoly
+        DrawPoly((Vector2){center.x, center.y}, 6, hexLayout.size.x, 30.0f, fillColor);
+        
+        // Draw hex outline
+        DrawPolyLines((Vector2){center.x, center.y}, 6, hexLayout.size.x, 30.0f, DARKGRAY);
     }
     
-    DrawText(TextFormat("Hexagonal Map - Click to select | Selected: (%d,%d,%d)", 
-             selectedHex.q, selectedHex.r, selectedHex.s), 10, 10, 20, BLACK);
+    DrawText(TextFormat("Hexagonal Map - Click to select | Selected: (%d,%d,%d) | Hexes: %d", 
+             selectedHex.q, selectedHex.r, selectedHex.s, map.hexCount), 10, 10, 20, BLACK);
 }
 
 //------------------------------------------------------------------------------------
@@ -145,6 +143,7 @@ int main(void)
 
     // De-Initialization
     //--------------------------------------------------------------------------------------
+    DestroyMap(&map);                   // Free map memory
     UnloadRenderTexture(target);        // Unload render texture
 
     CloseWindow();                      // Close window and OpenGL context

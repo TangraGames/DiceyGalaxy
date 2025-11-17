@@ -15,10 +15,13 @@
     - HexLength: Computes the length of a hex from the origin.
     - HexEquals: Checks if two hexes are equal.
     - HexDirection: Returns the direction vector for a given direction index.
+    - CreateMap: Creates a map with hexes in a given radius around center.
+    - DestroyMap: Frees the memory allocated for the map.
 
     Data Structures and definitions provided in this file:
     ------------------------------------------------------------------------
     - Definitions for Point and Hex structures.
+    - Map: Structure to hold a hexagonal map with center, size, and hex array.
     - Direction vectors for hex neighbors.
     - Layout: Structure to define hex layout (orientation, size, origin).
     - Orientation: Structure to define hex orientation (flat-topped or pointy-topped).
@@ -46,6 +49,14 @@ typedef struct FractionalHex {
     float r;
     float s;
 } FractionalHex;
+
+typedef struct Map {
+    Point center;       // Center position (origin) of hex (0,0,0)
+    Point hexSize;      // Size of each hex
+    int radius;         // Map radius (tiles from center)
+    Hex* hexes;         // Dynamic array of all hexes
+    int hexCount;       // Actual number of hexes in the map
+} Map;
 
 FractionalHex MakeFractionalHex(float q, float r, float s) {
     FractionalHex hex;
@@ -214,5 +225,40 @@ void PolygonCorners(Layout layout, Hex hex, Point* corners) {
     for (int i = 0; i < 6; i++) {
         Point offset = HexCornerOffset(layout, i);
         corners[i] = (Point){ center.x + offset.x, center.y + offset.y };
+    }
+}
+
+// Map creation and management functions
+
+Map CreateMap(Point center, Point hexSize, int radius) {
+    Map map;
+    map.center = center;
+    map.hexSize = hexSize;
+    map.radius = radius;
+    
+    // Calculate maximum number of hexes (3 * radius^2 + 3 * radius + 1)
+    int maxHexes = 3 * radius * radius + 3 * radius + 1;
+    map.hexes = (Hex*)malloc(maxHexes * sizeof(Hex));
+    map.hexCount = 0;
+    
+    // Populate map with hexes
+    for (int q = -radius; q <= radius; q++) {
+        for (int r = -radius; r <= radius; r++) {
+            int s = -q - r;
+            if (abs(s) <= radius) {
+                map.hexes[map.hexCount] = MakeHex(q, r, s);
+                map.hexCount++;
+            }
+        }
+    }
+    
+    return map;
+}
+
+void DestroyMap(Map* map) {
+    if (map->hexes != NULL) {
+        free(map->hexes);
+        map->hexes = NULL;
+        map->hexCount = 0;
     }
 }
